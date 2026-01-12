@@ -9,3 +9,6 @@ edition = "2024"
 async-trait = "0.1"
 repolet = { path = "../repolet" }
 repoletio = { path = "../repoletio" }
+serde = "1"
+tempfile = "3.24"
+tokio = "1"

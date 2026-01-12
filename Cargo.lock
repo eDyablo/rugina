@@ -239,6 +239,9 @@ dependencies = [
  "async-trait",
  "repolet",
  "repoletio",
+ "serde",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

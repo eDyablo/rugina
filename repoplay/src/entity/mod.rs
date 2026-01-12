@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use repolet::entity::{Generational, Identifiable};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Payload {
-    id: Generational<usize>,
-    _data: Vec<u8>,
+    #[serde(skip)]
+    pub id: Generational<usize>,
+    pub _data: Vec<u8>,
 }
 
 #[async_trait]

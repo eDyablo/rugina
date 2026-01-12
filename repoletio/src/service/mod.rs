@@ -1,43 +1,79 @@
-use std::{
-    marker::PhantomData,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
+use std::net::SocketAddr;
 
 use repolet::{entity::Identifiable, repository::Repository};
 
-pub struct Config {
-    endpoint: SocketAddr,
+pub struct Set<T>(pub T);
+
+pub struct NotSet;
+
+pub struct Config<Endpoint = NotSet, Repository = NotSet> {
+    endpont: Endpoint,
+    repository: Repository,
 }
 
-impl Config {
+impl Config<NotSet, NotSet> {
     pub fn new() -> Self {
-        Config {
-            endpoint: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
-        }
-    }
-
-    pub fn endpoint(mut self, endpoint: SocketAddr) -> Self {
-        self.endpoint = endpoint;
-        self
-    }
-
-    pub fn repository<T, R>(self, repository: R) -> RepositoryConfig<T, R>
-    where
-        T: Identifiable + Send,
-        R: Repository<T>,
-    {
-        RepositoryConfig {
-            _marker: PhantomData,
-            repository,
+        Self {
+            endpont: NotSet,
+            repository: NotSet,
         }
     }
 }
 
-pub struct RepositoryConfig<T, R>
+impl<Endpoint, RepositoryT> Config<Endpoint, RepositoryT> {
+    pub fn endpoint(
+        self,
+        endpoint: impl Into<SocketAddr>,
+    ) -> Config<Set<SocketAddr>, RepositoryT> {
+        Config {
+            endpont: Set(endpoint.into()),
+            repository: self.repository,
+        }
+    }
+
+    pub fn repository<R>(self, repository: R) -> Config<Endpoint, Set<R>>
+    where
+        R: Repository,
+    {
+        Config {
+            endpont: self.endpont,
+            repository: Set(repository),
+        }
+    }
+}
+
+impl<Endpoint, RepositoryT> Config<Set<Endpoint>, Set<RepositoryT>>
 where
-    T: Identifiable + Send,
-    R: Repository<T>,
+    RepositoryT: Repository,
 {
-    _marker: PhantomData<T>,
+    pub fn build(self) -> Service<RepositoryT>
+    where
+        RepositoryT: Repository,
+    {
+        Service {
+            repository: self.repository.0,
+        }
+    }
+}
+
+pub struct Service<R>
+where
+    R: Repository,
+{
     repository: R,
+}
+
+impl<R> Service<R>
+where
+    R: Repository,
+{
+    pub async fn add(
+        &mut self,
+        item: R::Item,
+    ) -> Result<
+        <<R as Repository>::Item as Identifiable>::Id,
+        <R as Repository>::Error,
+    > {
+        self.repository.put(item).await
+    }
 }

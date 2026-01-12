@@ -1,7 +1,4 @@
-use std::{
-    marker::PhantomData,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
@@ -50,34 +47,50 @@ struct Slot<T> {
 }
 
 #[async_trait]
-pub trait Repository<T>
-where
-    T: Identifiable + Send,
-{
+pub trait Repository {
+    type Item: Identifiable + Send + Sync;
     type Index: Copy;
-    type IdIndex: IdIndexMap<Id = <T as Identifiable>::Id, Index = Self::Index>;
+    type IdIndex: IdIndexMap<Id = <Self::Item as Identifiable>::Id, Index = Self::Index>;
     type Slot;
     type Error;
 
-    async fn delete(&mut self, id: T::Id) -> Result<(), Self::Error>;
+    async fn delete(
+        &mut self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<(), Self::Error>;
 
     async fn identify(&mut self) -> Result<(), Self::Error>;
 
-    async fn get(&self, id: T::Id) -> Result<Option<T>, Self::Error>;
+    async fn get(
+        &self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<Option<Self::Item>, Self::Error>;
 
-    async fn put(&mut self, entity: T) -> Result<T::Id, Self::Error>;
+    async fn put(
+        &mut self,
+        entity: Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error>;
 
-    async fn update(&mut self, entity: &T) -> Result<T::Id, Self::Error>;
+    async fn update(
+        &mut self,
+        entity: &Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error>;
 
     async fn visit<F>(&self, mut visitor: F) -> Result<(), Self::Error>
     where
-        F: for<'a> FnMut(&'a T) + Send;
+        F: for<'a> FnMut(&'a Self::Item) + Send;
 
-    fn index_to_id(&self, index: Self::Index) -> Option<T::Id> {
+    fn index_to_id(
+        &self,
+        index: Self::Index,
+    ) -> Option<<Self::Item as Identifiable>::Id> {
         Self::IdIndex::index_to_id(index)
     }
 
-    fn id_to_index(&self, id: T::Id) -> Option<Self::Index> {
+    fn id_to_index(
+        &self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Option<Self::Index> {
         Self::IdIndex::id_to_index(id)
     }
 }
@@ -114,7 +127,7 @@ pub struct VecRepository<T>
 where
     T: Identifiable + Send,
     T::Id: GenerationalId<usize>,
-    Self: Repository<T>,
+    Self: Repository,
 {
     storage: Vec<Slot<T>>,
 }
@@ -123,7 +136,7 @@ impl<T> VecRepository<T>
 where
     T: Identifiable + Clone + Send,
     T::Id: GenerationalId<usize>,
-    Self: Repository<T>,
+    Self: Repository,
 {
     pub fn new() -> Self {
         VecRepository {
@@ -150,7 +163,7 @@ impl<T> Default for VecRepository<T>
 where
     T: Identifiable + Clone + Send,
     T::Id: GenerationalId<usize>,
-    Self: Repository<T>,
+    Self: Repository,
 {
     fn default() -> Self {
         Self::new()
@@ -158,11 +171,12 @@ where
 }
 
 #[async_trait]
-impl<T> Repository<T> for VecRepository<T>
+impl<T> Repository for VecRepository<T>
 where
     T: Identifiable<Id = Generational<usize>> + Clone + Send + Sync,
     T::Id: GenerationalId<usize> + Copy,
 {
+    type Item = T;
     type Index = usize;
     type IdIndex = VecIdIndex;
     type Slot = Option<T>;
@@ -294,42 +308,39 @@ pub trait SelfPersistable {
     async fn load(&mut self) -> Result<(), Self::Error>;
 }
 
-pub struct AutosaveRepository<T, R>
+pub struct AutosaveRepository<R>
 where
-    T: Identifiable + Send,
-    R: Repository<T> + SelfPersistable,
+    R: Repository + SelfPersistable,
 {
-    _phantom: PhantomData<T>,
     inner: R,
 }
 
-impl<T, R> AutosaveRepository<T, R>
+impl<R> AutosaveRepository<R>
 where
-    T: Identifiable + Send,
-    R: Repository<T> + SelfPersistable,
+    R: Repository + SelfPersistable,
 {
     pub fn new(inner: R) -> Self {
-        Self {
-            _phantom: PhantomData,
-            inner,
-        }
+        Self { inner }
     }
 }
 
-pub struct FilePersistentRepository<T, R>
+pub struct FilePersistentRepository<R>
 where
-    T: Identifiable + Send,
-    R: Repository<T> + Persistable,
+    R: Repository + Persistable,
 {
-    _phantom: PhantomData<T>,
     file_path: PathBuf,
     inner: R,
 }
 
-impl<T, R> FilePersistentRepository<T, R>
+impl<R> FilePersistentRepository<R>
 where
-    T: Identifiable + Send,
-    R: Repository<T> + Persistable<Error = repository::Error<T::Id, R::Index>>,
+    R: Repository
+        + Persistable<
+            Error = repository::Error<
+                <<R as Repository>::Item as Identifiable>::Id,
+                R::Index,
+            >,
+        >,
     Self: SelfPersistable<Error = <R as Persistable>::Error>,
 {
     pub async fn new(
@@ -337,7 +348,6 @@ where
         inner: R,
     ) -> Result<Self, <R as Persistable>::Error> {
         let mut repository = Self {
-            _phantom: PhantomData,
             file_path: path.to_path_buf(),
             inner,
         };
@@ -356,16 +366,12 @@ where
 }
 
 #[async_trait]
-impl<T, R> SelfPersistable for FilePersistentRepository<T, R>
+impl<R> SelfPersistable for FilePersistentRepository<R>
 where
-    T: Identifiable + Send + Sync,
-    R: Repository<T>
-        + Persistable<Error = <R as Repository<T>>::Error>
-        + Send
-        + Sync,
-    <R as Repository<T>>::Error: From<std::io::Error>,
+    R: Repository + Persistable<Error = <R as Repository>::Error> + Send + Sync,
+    <R as Repository>::Error: From<std::io::Error>,
 {
-    type Error = <R as Repository<T>>::Error;
+    type Error = <R as Repository>::Error;
 
     async fn dump(&self) -> Result<(), Self::Error> {
         let mut file = OpenOptions::new()
@@ -387,17 +393,20 @@ where
 }
 
 #[async_trait]
-impl<T, R> Repository<T> for FilePersistentRepository<T, R>
+impl<R> Repository for FilePersistentRepository<R>
 where
-    T: Identifiable + Send + Sync,
-    R: Repository<T> + Persistable + Send + Sync,
+    R: Repository + Persistable + Send + Sync,
 {
+    type Item = R::Item;
     type Index = R::Index;
     type IdIndex = R::IdIndex;
     type Slot = R::Slot;
-    type Error = <R as Repository<T>>::Error;
+    type Error = <R as Repository>::Error;
 
-    async fn delete(&mut self, id: T::Id) -> Result<(), Self::Error> {
+    async fn delete(
+        &mut self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<(), Self::Error> {
         self.inner.delete(id).await
     }
 
@@ -405,42 +414,54 @@ where
         self.inner.identify().await
     }
 
-    async fn get(&self, id: T::Id) -> Result<Option<T>, Self::Error> {
+    async fn get(
+        &self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         self.inner.get(id).await
     }
 
-    async fn put(&mut self, entity: T) -> Result<T::Id, Self::Error> {
+    async fn put(
+        &mut self,
+        entity: Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error> {
         self.inner.put(entity).await
     }
 
-    async fn update(&mut self, entity: &T) -> Result<T::Id, Self::Error> {
+    async fn update(
+        &mut self,
+        entity: &Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error> {
         self.inner.update(entity).await
     }
 
     async fn visit<F>(&self, visitor: F) -> Result<(), Self::Error>
     where
-        F: for<'a> FnMut(&'a T) + Send,
+        F: for<'a> FnMut(&'a Self::Item) + Send,
     {
         self.inner.visit(visitor).await
     }
 }
 
 #[async_trait]
-impl<T, R> Repository<T> for AutosaveRepository<T, R>
+impl<R> Repository for AutosaveRepository<R>
 where
-    T: Identifiable + Send + Sync,
-    R: Repository<T>
-        + SelfPersistable<Error = <R as Repository<T>>::Error>
+    R: Repository
+        + SelfPersistable<Error = <R as Repository>::Error>
         + Send
         + Sync,
-    <R as Repository<T>>::Error: Send,
+    <R as Repository>::Error: Send,
 {
+    type Item = R::Item;
     type Index = R::Index;
     type IdIndex = R::IdIndex;
     type Slot = R::Slot;
-    type Error = <R as Repository<T>>::Error;
+    type Error = <R as Repository>::Error;
 
-    async fn delete(&mut self, id: T::Id) -> Result<(), Self::Error> {
+    async fn delete(
+        &mut self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<(), Self::Error> {
         let result = self.inner.delete(id).await;
         self.inner.dump().await?;
         result
@@ -450,17 +471,26 @@ where
         self.inner.identify().await
     }
 
-    async fn get(&self, id: T::Id) -> Result<Option<T>, Self::Error> {
+    async fn get(
+        &self,
+        id: <Self::Item as Identifiable>::Id,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         self.inner.get(id).await
     }
 
-    async fn put(&mut self, entity: T) -> Result<T::Id, Self::Error> {
+    async fn put(
+        &mut self,
+        entity: Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error> {
         let result = self.inner.put(entity).await;
         self.inner.dump().await?;
         result
     }
 
-    async fn update(&mut self, entity: &T) -> Result<T::Id, Self::Error> {
+    async fn update(
+        &mut self,
+        entity: &Self::Item,
+    ) -> Result<<Self::Item as Identifiable>::Id, Self::Error> {
         let result = self.inner.update(entity).await;
         self.inner.dump().await?;
         result
@@ -468,7 +498,7 @@ where
 
     async fn visit<F>(&self, visitor: F) -> Result<(), Self::Error>
     where
-        F: for<'a> FnMut(&'a T) + Send,
+        F: for<'a> FnMut(&'a Self::Item) + Send,
     {
         self.inner.visit(visitor).await
     }
