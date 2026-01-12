@@ -6,3 +6,6 @@ edition = "2024"
 [dev-dependencies]
 
 [dependencies]
+async-trait = "0.1"
+repolet = { path = "../repolet" }
+repoletio = { path = "../repoletio" }

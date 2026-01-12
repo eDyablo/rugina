@@ -235,6 +235,11 @@ dependencies = [
 [[package]]
 name = "repoleplay"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "repolet",
+ "repoletio",
+]
 
 [[package]]
 name = "repolet"
@@ -252,6 +257,9 @@ dependencies = [
 [[package]]
 name = "repoletio"
 version = "0.1.0"
+dependencies = [
+ "repolet",
+]
 
 [[package]]
 name = "rustix"

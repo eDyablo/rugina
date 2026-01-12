@@ -6,3 +6,4 @@ edition = "2024"
 [dev-dependencies]
 
 [dependencies]
+repolet = { path = "../repolet" }
