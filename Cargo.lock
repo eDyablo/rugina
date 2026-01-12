@@ -233,6 +233,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "repoleplay"
+version = "0.1.0"
+
+[[package]]
 name = "repolet"
 version = "0.1.0"
 dependencies = [
