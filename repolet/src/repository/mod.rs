@@ -242,10 +242,11 @@ where
     where
         F: for<'a> FnMut(&'a Self::Item) -> U,
     {
-        let visited_count = 0usize;
+        let mut visited_count = 0usize;
         for slot in self.storage.iter() {
             if let Some(object) = slot.habitat.as_ref() {
                 visitor(object);
+                visited_count += 1;
             }
         }
         Ok(visited_count)

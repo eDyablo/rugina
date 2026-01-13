@@ -150,12 +150,13 @@ mod vec_repository {
         ])
         .await;
         let mut data = Vec::<u8>::new();
-        repository
+        let count = repository
             .visit(|i: &Payload| {
                 data.extend(&i.data);
                 future::ready(())
             })
             .unwrap();
+        assert_eq!(count, 3);
         assert_eq!(data, &[1, 2, 3]);
     }
 
