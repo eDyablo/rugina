@@ -1,7 +1,6 @@
 mod config;
 mod entity;
 
-
 use repolet::repository::{
     AutosaveRepository, FilePersistentRepository, VecRepository,
 };

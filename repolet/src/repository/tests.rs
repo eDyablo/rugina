@@ -65,6 +65,8 @@ impl From<&str> for Payload {
 }
 
 mod vec_repository {
+    use std::future;
+
     use tokio::io::{self, AsyncWriteExt};
 
     use crate::entity::Identifiable;
@@ -149,8 +151,10 @@ mod vec_repository {
         .await;
         let mut data = Vec::<u8>::new();
         repository
-            .visit(|i: &Payload| data.extend(&i.data))
-            .await
+            .visit(|i: &Payload| {
+                data.extend(&i.data);
+                future::ready(())
+            })
             .unwrap();
         assert_eq!(data, &[1, 2, 3]);
     }

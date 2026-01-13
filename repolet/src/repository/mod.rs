@@ -76,9 +76,9 @@ pub trait Repository {
         entity: &Self::Item,
     ) -> Result<<Self::Item as Identifiable>::Id, Self::Error>;
 
-    async fn visit<F>(&self, mut visitor: F) -> Result<(), Self::Error>
+    fn visit<F, U>(&self, visitor: F) -> Result<usize, Self::Error>
     where
-        F: for<'a> FnMut(&'a Self::Item) + Send;
+        F: for<'a> FnMut(&'a Self::Item) -> U;
 
     fn index_to_id(
         &self,
@@ -238,16 +238,17 @@ where
         Ok(id)
     }
 
-    async fn visit<F>(&self, mut visitor: F) -> Result<(), Self::Error>
+    fn visit<F, U>(&self, mut visitor: F) -> Result<usize, Self::Error>
     where
-        F: for<'a> FnMut(&'a T) + Send,
+        F: for<'a> FnMut(&'a Self::Item) -> U,
     {
+        let visited_count = 0usize;
         for slot in self.storage.iter() {
             if let Some(object) = slot.habitat.as_ref() {
-                visitor(object)
+                visitor(object);
             }
         }
-        Ok(())
+        Ok(visited_count)
     }
 }
 
@@ -435,11 +436,11 @@ where
         self.inner.update(entity).await
     }
 
-    async fn visit<F>(&self, visitor: F) -> Result<(), Self::Error>
+    fn visit<F, U>(&self, visitor: F) -> Result<usize, Self::Error>
     where
-        F: for<'a> FnMut(&'a Self::Item) + Send,
+        F: for<'a> FnMut(&'a Self::Item) -> U,
     {
-        self.inner.visit(visitor).await
+        self.inner.visit(visitor)
     }
 }
 
@@ -496,11 +497,11 @@ where
         result
     }
 
-    async fn visit<F>(&self, visitor: F) -> Result<(), Self::Error>
+    fn visit<F, U>(&self, visitor: F) -> Result<usize, Self::Error>
     where
-        F: for<'a> FnMut(&'a Self::Item) + Send,
+        F: for<'a> FnMut(&'a Self::Item) -> U,
     {
-        self.inner.visit(visitor).await
+        self.inner.visit(visitor)
     }
 }
 
